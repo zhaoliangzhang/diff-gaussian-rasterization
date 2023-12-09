@@ -14,6 +14,9 @@
 
 #include "config.h"
 #include "stdio.h"
+#include <cuda_fp16.h>
+#include "half_struct.h"
+#include "operator_overloading.h"
 
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define NUM_WARPS (BLOCK_SIZE/32)
@@ -38,12 +41,12 @@ __device__ const float SH_C3[] = {
 	-0.5900435899266435f
 };
 
-__forceinline__ __device__ float ndc2Pix(float v, int S)
+__forceinline__ __device__ __half ndc2Pix(__half v, int S)
 {
-	return ((v + 1.0) * S - 1.0) * 0.5;
+	return ((v + __double2half(1.0)) * __int2half_rn(S) - __double2half(1.0)) * __double2half(0.5);
 }
 
-__forceinline__ __device__ void getRect(const float2 p, int max_radius, uint2& rect_min, uint2& rect_max, dim3 grid)
+__forceinline__ __device__ void getRect(const __half2 p, int max_radius, uint2& rect_min, uint2& rect_max, dim3 grid)
 {
 	rect_min = {
 		min(grid.x, max((int)0, (int)((p.x - max_radius) / BLOCK_X))),
@@ -55,9 +58,9 @@ __forceinline__ __device__ void getRect(const float2 p, int max_radius, uint2& r
 	};
 }
 
-__forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float* matrix)
+__forceinline__ __device__ half3 transformPoint4x3(const half3& p, const __half* matrix)
 {
-	float3 transformed = {
+	half3 transformed = {
 		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z + matrix[12],
 		matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z + matrix[13],
 		matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z + matrix[14],
@@ -65,9 +68,9 @@ __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float
 	return transformed;
 }
 
-__forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float* matrix)
+__forceinline__ __device__ half4 transformPoint4x4(const half3& p, const __half* matrix)
 {
-	float4 transformed = {
+	half4 transformed = {
 		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z + matrix[12],
 		matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z + matrix[13],
 		matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z + matrix[14],
@@ -76,9 +79,9 @@ __forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float
 	return transformed;
 }
 
-__forceinline__ __device__ float3 transformVec4x3(const float3& p, const float* matrix)
+__forceinline__ __device__ half3 transformVec4x3(const half3& p, const __half* matrix)
 {
-	float3 transformed = {
+	half3 transformed = {
 		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z,
 		matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z,
 		matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z,
@@ -86,9 +89,9 @@ __forceinline__ __device__ float3 transformVec4x3(const float3& p, const float* 
 	return transformed;
 }
 
-__forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, const float* matrix)
+__forceinline__ __device__ half3 transformVec4x3Transpose(const half3& p, const __half* matrix)
 {
-	float3 transformed = {
+	half3 transformed = {
 		matrix[0] * p.x + matrix[1] * p.y + matrix[2] * p.z,
 		matrix[4] * p.x + matrix[5] * p.y + matrix[6] * p.z,
 		matrix[8] * p.x + matrix[9] * p.y + matrix[10] * p.z,
@@ -96,34 +99,34 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 	return transformed;
 }
 
-__forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
+__forceinline__ __device__ __half dnormvdz(half3 v, half3 dv)
 {
-	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
-	float dnormvdz = (-v.x * v.z * dv.x - v.y * v.z * dv.y + (sum2 - v.z * v.z) * dv.z) * invsum32;
+	__half sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
+	__half invsum32 = 1.0f / hrsqrt(sum2 * sum2 * sum2);
+	__half dnormvdz = (-v.x * v.z * dv.x - v.y * v.z * dv.y + (sum2 - v.z * v.z) * dv.z) * invsum32;
 	return dnormvdz;
 }
 
-__forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
+__forceinline__ __device__ half3 dnormvdv(half3 v, half3 dv)
 {
-	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
+	__half sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
+	__half invsum32 = 1.0f / hrsqrt(sum2 * sum2 * sum2);
 
-	float3 dnormvdv;
+	half3 dnormvdv;
 	dnormvdv.x = ((+sum2 - v.x * v.x) * dv.x - v.y * v.x * dv.y - v.z * v.x * dv.z) * invsum32;
 	dnormvdv.y = (-v.x * v.y * dv.x + (sum2 - v.y * v.y) * dv.y - v.z * v.y * dv.z) * invsum32;
 	dnormvdv.z = (-v.x * v.z * dv.x - v.y * v.z * dv.y + (sum2 - v.z * v.z) * dv.z) * invsum32;
 	return dnormvdv;
 }
 
-__forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
+__forceinline__ __device__ half4 dnormvdv(half4 v, half4 dv)
 {
-	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
+	__half sum2 = v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+	__half invsum32 = 1.0f / hrsqrt(sum2 * sum2 * sum2);
 
-	float4 vdv = { v.x * dv.x, v.y * dv.y, v.z * dv.z, v.w * dv.w };
-	float vdv_sum = vdv.x + vdv.y + vdv.z + vdv.w;
-	float4 dnormvdv;
+	half4 vdv = { v.x * dv.x, v.y * dv.y, v.z * dv.z, v.w * dv.w };
+	__half vdv_sum = vdv.x + vdv.y + vdv.z + vdv.w;
+	half4 dnormvdv;
 	dnormvdv.x = ((sum2 - v.x * v.x) * dv.x - v.x * (vdv_sum - vdv.x)) * invsum32;
 	dnormvdv.y = ((sum2 - v.y * v.y) * dv.y - v.y * (vdv_sum - vdv.y)) * invsum32;
 	dnormvdv.z = ((sum2 - v.z * v.z) * dv.z - v.z * (vdv_sum - vdv.z)) * invsum32;
@@ -131,27 +134,27 @@ __forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
 	return dnormvdv;
 }
 
-__forceinline__ __device__ float sigmoid(float x)
+__forceinline__ __device__ __half sigmoid(__half x)
 {
-	return 1.0f / (1.0f + expf(-x));
+	return 1.0f / (__float2half(1.0f) + hexp(-x));
 }
 
 __forceinline__ __device__ bool in_frustum(int idx,
-	const float* orig_points,
-	const float* viewmatrix,
-	const float* projmatrix,
+	const __half* orig_points,
+	const __half* viewmatrix,
+	const __half* projmatrix,
 	bool prefiltered,
-	float3& p_view)
+	half3& p_view)
 {
-	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
+	half3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 
 	// Bring points to screen space
-	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
-	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+	half4 p_hom = transformPoint4x4(p_orig, projmatrix);
+	__half p_w = 1.0f / (p_hom.w + 0.0000001f);
+	half3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 
-	if (p_view.z <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
+	if (p_view.z <= __float2half(0.2f))// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
 		if (prefiltered)
 		{

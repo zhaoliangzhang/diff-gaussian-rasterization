@@ -17,6 +17,8 @@
 #include "device_launch_parameters.h"
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
+#include <cuda_fp16.h>
+#include "half_struct.h"
 
 namespace BACKWARD
 {
@@ -25,39 +27,39 @@ namespace BACKWARD
 		const uint2* ranges,
 		const uint32_t* point_list,
 		int W, int H,
-		const float* bg_color,
-		const float2* means2D,
-		const float4* conic_opacity,
-		const float* colors,
-		const float* final_Ts,
+		const __half* bg_color,
+		const __half2* means2D,
+		const half4* conic_opacity,
+		const __half* colors,
+		const __half* final_Ts,
 		const uint32_t* n_contrib,
-		const float* dL_dpixels,
-		float3* dL_dmean2D,
-		float4* dL_dconic2D,
-		float* dL_dopacity,
-		float* dL_dcolors);
+		const __half* dL_dpixels,
+		half3* dL_dmean2D,
+		half4* dL_dconic2D,
+		__half* dL_dopacity,
+		__half* dL_dcolors);
 
 	void preprocess(
 		int P, int D, int M,
-		const float3* means,
+		const half3* means,
 		const int* radii,
-		const float* shs,
+		const __half* shs,
 		const bool* clamped,
 		const glm::vec3* scales,
 		const glm::vec4* rotations,
-		const float scale_modifier,
-		const float* cov3Ds,
-		const float* view,
-		const float* proj,
-		const float focal_x, float focal_y,
-		const float tan_fovx, float tan_fovy,
+		const __half scale_modifier,
+		const __half* cov3Ds,
+		const __half* view,
+		const __half* proj,
+		const __half focal_x, __half focal_y,
+		const __half tan_fovx, __half tan_fovy,
 		const glm::vec3* campos,
-		const float3* dL_dmean2D,
-		const float* dL_dconics,
+		const half3* dL_dmean2D,
+		const __half* dL_dconics,
 		glm::vec3* dL_dmeans,
-		float* dL_dcolor,
-		float* dL_dcov3D,
-		float* dL_dsh,
+		__half* dL_dcolor,
+		__half* dL_dcov3D,
+		__half* dL_dsh,
 		glm::vec3* dL_dscale,
 		glm::vec4* dL_drot);
 }

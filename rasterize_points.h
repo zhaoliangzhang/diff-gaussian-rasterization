@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <tuple>
 #include <string>
+#include <cuda_fp16.h>
 	
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
@@ -23,12 +24,12 @@ RasterizeGaussiansCUDA(
     const torch::Tensor& opacity,
 	const torch::Tensor& scales,
 	const torch::Tensor& rotations,
-	const float scale_modifier,
+	const __half scale_modifier,
 	const torch::Tensor& cov3D_precomp,
 	const torch::Tensor& viewmatrix,
 	const torch::Tensor& projmatrix,
-	const float tan_fovx, 
-	const float tan_fovy,
+	const __half tan_fovx, 
+	const __half tan_fovy,
     const int image_height,
     const int image_width,
 	const torch::Tensor& sh,
@@ -45,12 +46,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     const torch::Tensor& colors,
 	const torch::Tensor& scales,
 	const torch::Tensor& rotations,
-	const float scale_modifier,
+	const __half scale_modifier,
 	const torch::Tensor& cov3D_precomp,
 	const torch::Tensor& viewmatrix,
     const torch::Tensor& projmatrix,
-	const float tan_fovx, 
-	const float tan_fovy,
+	const __half tan_fovx, 
+	const __half tan_fovy,
     const torch::Tensor& dL_dout_color,
 	const torch::Tensor& sh,
 	const int degree,
